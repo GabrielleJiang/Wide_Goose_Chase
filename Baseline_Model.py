@@ -175,9 +175,14 @@ def distance_of_polar_coordinates(point_1, point_2):
         point_1 (tuple): (r, θ) coordinates of the first point.
         point_2 (tuple): (r, θ) coordinates of the second point.
     """
+
     radius_1, theta_1 = point_1
     radius_2, theta_2 = point_2
-    angle_diffience = theta_1 - theta_2
+    
+    angle_diffience = abs(theta_1 - theta_2)
+    if angle_diffience > math.pi:
+        angle_diffience = 2 * math.pi - angle_diffience
+    
     distance = math.sqrt(radius_1 ** 2 + radius_2 ** 2 - 2 * radius_1 * radius_2 * math.cos(angle_diffience))
     return distance
 
@@ -192,8 +197,8 @@ def calculate_time_period(time, len_period):
     """
     return int(time / len_period)
 
-
-def generate_uniformly_points(num_points=1000, radius=1, show_plot=True, save_path=None):
+# This code is only for visualization. It is not used in the simulation.
+def generate_uniformly_points(num_points = 1000, radius = 1, show_plot = True, save_path = None):
     """
     Generate and visualize points uniformly distributed in a disk.
     
@@ -232,7 +237,6 @@ def generate_uniformly_points(num_points=1000, radius=1, show_plot=True, save_pa
     plt.ylabel("y")
     plt.axis('equal')
     plt.grid(True)
-    
     circle = plt.Circle((0, 0), radius, fill=False, color='red', linestyle='--')
     plt.gca().add_patch(circle)
     
@@ -448,7 +452,7 @@ class SimulationBaselineModel:
             matching_rate = 0
         metrics_dic["match_rate"] = matching_rate
 
-
+    # This function do not need to be called in the simulation.
     def plot_queue_length(self):
         """
         Plot the length of queue.
@@ -520,9 +524,6 @@ def grid_search(lambda_values, mu_ratios, sim_duration=3000):
         lambda_values (list): Different rider arrival rates to test
         mu_ratios (list): Different driver/rider ratios to test
         sim_duration (float): How long to run each test
-    
-    Returns:
-        tuple: Best parameters and all results
     """
     best_params = None
     best_score = float('inf')
