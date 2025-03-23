@@ -632,7 +632,7 @@ def run_comparison_cases():
                 "lambda_rate": lambda_rate,
                 "mu_rate": mu_rate,
                 "utilization": utilization,
-                "avg_rider_time": results_dict["avg_rider_time"]
+                "avg_rider_time": results_dict["avg_rider_time"]  # This is total time (wait + pickup + trip)
             })
             if utilization in [0.70, 0.85, 0.95]:
                 print(f"Creating queue length plot for utilization={utilization:.2f}...")
@@ -644,7 +644,7 @@ def run_comparison_cases():
 
 def plot_performance_comparison(results):
     """
-    Plot the relationship between system utilization and average rider time.
+    Plot how average total time riders spend in the system changes with utilization.
     
     Parameter:
         results (list): A list with results
@@ -665,8 +665,10 @@ def plot_performance_comparison(results):
     colors = ['blue', 'orange', 'green', 'red', 'purple']
     
     for i, lambda_val in enumerate(lambda_values):
-        x_points = []
-        y_points = []
+        # Extract data points for this lambda value
+        x_points = []  # utilization values
+        y_points = []  # average total times
+        
         for result in results:
             if result["lambda_rate"] == lambda_val:
                 x_points.append(result["utilization"])
@@ -680,16 +682,19 @@ def plot_performance_comparison(results):
             color=color,
             label=f'λ = {lambda_val}'
         )
-
-    plt.axvline(x = 1.0, color = 'red', linestyle = '--', alpha = 0.5)
-    plt.text(1.02, plt.ylim()[1] * 0.5, "Stability Threshold", color = 'red', rotation = 90)
     
-    plt.title("Average Rider Wait Time vs System Utilization", fontsize=14)
+    # Add vertical line at utilization = 1.0 (stability threshold)
+    plt.axvline(x=1.0, color='red', linestyle='--', alpha=0.5)
+    plt.text(1.02, plt.ylim()[1] * 0.5, "Stability Threshold", color='red', rotation=90)
+    
+    # Add labels and legend
+    plt.title("Average Total Time in System vs Utilization", fontsize=14)
     plt.xlabel("System Utilization (λ/μ)", fontsize=12)
-    plt.ylabel("Average Rider Wait Time", fontsize=12)
+    plt.ylabel("Average Total Time (wait + pickup + trip)", fontsize=12)
     plt.grid(True)
     plt.legend()
-    plt.axvline(x = 1.0, color = 'red', linestyle = '--', alpha = 0.5, label = 'Stability Threshold')
+    
+    # Save and close
     plt.savefig("performance_comparison.png")
     plt.close()
     print("Plot saved as 'performance_comparison.png'")
