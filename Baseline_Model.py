@@ -267,6 +267,8 @@ class SimulationBaselineModel:
         current_time (float): Current simulation time.
         is_warmed_up (bool): Whether is warm up or not.
         current_time (float): Currnt time.
+        rider_arrival_times (list): Times when riders arrive.
+        driver_arrival_times (list): Times when drivers arrive.
     """
     def __init__(self, lambda_rate, mu_rate, sim_duration=5000, warmup_period=500, period_length=100, radius=1):
         self.lambda_rate = lambda_rate
@@ -289,6 +291,8 @@ class SimulationBaselineModel:
         self.matched_drivers = 0
         
         self.is_warmed_up = False
+        self.rider_arrival_times = []
+        self.driver_arrival_times = []
         
 
     def run(self):
@@ -313,6 +317,8 @@ class SimulationBaselineModel:
                 self.total_drivers = 0
                 self.matched_drivers = 0
                 self.rider_times = []
+                self.rider_arrival_times = []
+                self.driver_arrival_times = []
                 
             if event.event_type == "rider_arrival":
                 self._when_rider_arrival(event)
@@ -346,6 +352,7 @@ class SimulationBaselineModel:
         rider = Rider(event.rider_id, event.time, event.origin, event.destination, event.period)
         if self.is_warmed_up:
             self.total_riders += 1
+            self.rider_arrival_times.append(event.time)
         self.rider_queue.append(rider)
         self._when_next_rider_arrival()
 
@@ -360,6 +367,7 @@ class SimulationBaselineModel:
         """
         if self.is_warmed_up:
             self.total_drivers +=1
+            self.driver_arrival_times.append(event.time)
         driver = Driver(event.driver_id, event.time, event.origin, event.period)
         
         if self.rider_queue:
@@ -452,9 +460,12 @@ class SimulationBaselineModel:
             matching_rate = 0
         metrics_dic["match_rate"] = matching_rate
 
-    def plot_queue_length(self):
+    def plot_queue_length(self, filename="queue_length.png"):
         """
         Plot the queue length over time to visualize system stability.
+
+        Parameters:
+            filename: the name of the file
         """
         if not self.queue_length_history or not self.time_points:
             print("No queue length data available")
@@ -491,9 +502,64 @@ class SimulationBaselineModel:
         plt.figtext(0.02, 0.02, 
                    f"λ = {self.lambda_rate:.2f}, μ = {self.mu_rate:.2f}, ρ = {self.lambda_rate/self.mu_rate:.2f}",
                    fontsize=10)
-        plt.savefig("queue_length.png")
+        plt.savefig(filename)
         plt.close()
-        print("Queue length plot saved as 'queue_length.png'")
+        print(f"Queue length plot saved as '{filename}'")
+
+    def plot_arrivals_histogram(self, bin_width = 200, filename = "arrivals_histogram.png"):
+        """
+        Plot a histogram showing the number of rider and driver arrivals over time.
+        
+        Parameters:
+            bin_width (float): Width of each time bin
+            filename (str): Name of the file
+        """
+        if not self.rider_arrival_times or not self.driver_arrival_times:
+            print("No Data")
+            return
+        
+        max_time = max(max(self.rider_arrival_times), max(self.driver_arrival_times))
+        bins = np.arange(self.warmup_period, max_time + bin_width, bin_width)
+        plt.figure(figsize=(12, 6))
+        
+        # rider arrivals
+        rider_counts, rider_bins, _ = plt.hist(
+            self.rider_arrival_times, 
+            bins = bins, 
+            alpha = 0.5, 
+            label = 'Riders', 
+            color = 'blue'
+        )
+        
+        # driver arrivals
+        driver_counts, driver_bins, _ = plt.hist(
+            self.driver_arrival_times, 
+            bins = bins, 
+            alpha = 0.5, 
+            label = 'Drivers', 
+            color = 'green'
+        )
+        bin_centers = 0.5 * (bins[1:] + bins[:-1])
+        
+        plt.plot(bin_centers, rider_counts, 'b-', linewidth = 2, label='Rider Trend')
+        plt.plot(bin_centers, driver_counts, 'g-', linewidth = 2, label='Driver Trend')
+        plt.title(f"Arrivals Distribution Over Time (bin width = {bin_width})", fontsize = 14)
+        plt.xlabel("Simulation Time", fontsize = 12)
+        plt.ylabel("Number of Arrivals", fontsize = 12)
+        plt.grid(True, alpha = 0.3)
+        plt.legend()
+        plt.figtext(0.02, 0.02, 
+                   f"λ = {self.lambda_rate:.2f}, μ = {self.mu_rate:.2f}, ρ = {self.lambda_rate/self.mu_rate:.2f}",
+                   fontsize=10)
+        plt.savefig(filename)
+        plt.close()
+        print(f"Arrivals histogram saved as '{filename}'")
+
+        return {
+            "bin_centers": bin_centers,
+            "rider_counts": rider_counts,
+            "driver_counts": driver_counts
+        }
 
 
 def determine_warmup_period(lambda_rate, mu_rate, test_duration=2000):
@@ -545,7 +611,7 @@ def determine_warmup_period(lambda_rate, mu_rate, test_duration=2000):
     return test_duration * 0.2
 
 
-def grid_search(lambda_values, mu_ratios, sim_duration=3000):
+def grid_search(lambda_values, mu_ratios, sim_duration=5000):
     """
     Simple grid search to find the best combination of rider and driver arrival rates.
 
@@ -622,10 +688,10 @@ def run_comparison_cases():
             print(f"Testing: λ={lambda_rate:.1f}, μ={mu_rate:.1f}, utilization={utilization:.2f}")
         
             sim = SimulationBaselineModel(
-                lambda_rate=lambda_rate,
-                mu_rate=mu_rate,
-                sim_duration=3000,
-                warmup_period=warmup_period
+                lambda_rate = lambda_rate,
+                mu_rate = mu_rate,
+                sim_duration = 5000,
+                warmup_period = warmup_period
             )
             
             results_dict = sim.run()
@@ -635,9 +701,6 @@ def run_comparison_cases():
                 "utilization": utilization,
                 "avg_rider_time": results_dict["avg_rider_time"]  # This is total time which includes wait + pickup + trip
             })
-            if utilization in [0.70, 0.85, 0.95]:
-                print(f"Creating queue length plot for utilization={utilization:.2f}...")
-                sim.plot_queue_length()
     
     plot_performance_comparison(results)
     return results
@@ -740,6 +803,15 @@ def main():
     print(f"Average rider wait time: {results['avg_rider_time']:.3f}")
     print(f"Variance in rider wait time: {results['variance_rider_time']:.3f}")
     print(f"Driver matching rate: {results['driver_matching_rate']:.3f}")
+    
+    # Plot queue length with best parameters that found by grid search
+    print("\nCreating queue length plot with best parameters...")
+    final_sim.plot_queue_length("best_params_queue_length.png")
+    
+    # Plot histogram of driver and rider arrival
+    print("Creating arrivals histogram...")
+    final_sim.plot_arrivals_histogram(bin_width=200, filename="arrivals_histogram.png")
+    
     run_comparison_cases()
     print("\nSimulation complete")
 
