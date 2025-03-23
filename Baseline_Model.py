@@ -197,7 +197,7 @@ def calculate_time_period(time, len_period):
     """
     return int(time / len_period)
 
-# This code is only for visualization. It is not used in the simulation.
+
 def generate_uniformly_points(num_points = 1000, radius = 1, show_plot = True, save_path = None):
     """
     Generate and visualize points uniformly distributed in a disk.
@@ -452,19 +452,48 @@ class SimulationBaselineModel:
             matching_rate = 0
         metrics_dic["match_rate"] = matching_rate
 
-    # This function do not need to be called in the simulation.
     def plot_queue_length(self):
         """
-        Plot the length of queue.
+        Plot the queue length over time to visualize system stability.
         """
+        if not self.queue_length_history or not self.time_points:
+            print("No queue length data available")
+            return
         plt.figure(figsize=(10, 6))
-        plt.plot(self.time_points, self.queue_length_history)
-        plt.title("Queue Length Over Time")
-        plt.xlabel("Time")
-        plt.ylabel("Queue Length")
+        plt.plot(self.time_points, self.queue_length_history, 'b-', linewidth=2)
+        
+        # Find data points after warmup period
+        steady_state_points = []
+        steady_state_times = []
+        
+        for i, time in enumerate(self.time_points):
+            if time >= self.warmup_period:
+                steady_state_points.append(self.queue_length_history[i])
+                steady_state_times.append(time)
+        
+        # Calculate average queue length after warmup
+        if steady_state_points:
+            avg_queue_length = sum(steady_state_points) / len(steady_state_points)
+            print(f"Average queue length after warm-up: {avg_queue_length:.2f}")
+            
+            # Add average line to the plot
+            plt.axhline(y=avg_queue_length, color='g', linestyle='--')
+            plt.text(self.time_points[-1] * 0.5, avg_queue_length + 0.5, 
+                     f"Avg Queue Length: {avg_queue_length:.2f}", color='g')
+        else:
+            print("No data after warm-up period")
+        
+        # Add labels and save
+        plt.title("Rider Queue Length Over Time", fontsize=14)
+        plt.xlabel("Simulation Time", fontsize=12)
+        plt.ylabel("Number of Riders in Queue", fontsize=12)
         plt.grid(True)
+        plt.figtext(0.02, 0.02, 
+                   f"λ = {self.lambda_rate:.2f}, μ = {self.mu_rate:.2f}, ρ = {self.lambda_rate/self.mu_rate:.2f}",
+                   fontsize=10)
         plt.savefig("queue_length.png")
         plt.close()
+        print("Queue length plot saved as 'queue_length.png'")
 
 
 def determine_warmup_period(lambda_rate, mu_rate, test_duration=2000):
@@ -570,6 +599,102 @@ def grid_search(lambda_values, mu_ratios, sim_duration=3000):
     return best_params, all_results
 
 
+def run_comparison_cases():
+    """
+    Run simulations with different arrival rates and collect results.
+    
+    This function tests multiple combinations where driver arrival rate (μ) is 
+    always greater than or equal to passenger arrival rate (λ). This ensures 
+    queue stability, which in the steady-state.
+    """
+    lambda_values = [3.0, 4.0, 5.0, 6.0, 7.0]
+    utilization_values = [0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
+    results = []
+    warmup_period = 500
+    
+    print("Starting comparison...")
+    for lambda_rate in lambda_values:
+        for utilization in utilization_values:
+            # ensures μ >= λ
+            mu_rate = lambda_rate / utilization
+            
+            print(f"Testing: λ={lambda_rate:.1f}, μ={mu_rate:.1f}, utilization={utilization:.2f}")
+        
+            sim = SimulationBaselineModel(
+                lambda_rate=lambda_rate,
+                mu_rate=mu_rate,
+                sim_duration=3000,
+                warmup_period=warmup_period
+            )
+            
+            results_dict = sim.run()
+            results.append({
+                "lambda_rate": lambda_rate,
+                "mu_rate": mu_rate,
+                "utilization": utilization,
+                "avg_rider_time": results_dict["avg_rider_time"]
+            })
+            if utilization in [0.70, 0.85, 0.95]:
+                print(f"Creating queue length plot for utilization={utilization:.2f}...")
+                sim.plot_queue_length()
+    
+    plot_performance_comparison(results)
+    return results
+
+
+def plot_performance_comparison(results):
+    """
+    Plot the relationship between system utilization and average rider time.
+    
+    Parameter:
+        results (list): A list with results
+    """
+    for result in results:
+        if "utilization" not in result:
+            result["utilization"] = result["lambda_rate"] / result["mu_rate"]
+    results.sort(key=lambda r: r["utilization"])
+    
+    lambda_values = []
+    for result in results:
+        if result["lambda_rate"] not in lambda_values:
+            lambda_values.append(result["lambda_rate"])
+    lambda_values.sort()
+    
+    plt.figure(figsize=(10, 6))
+    
+    colors = ['blue', 'orange', 'green', 'red', 'purple']
+    
+    for i, lambda_val in enumerate(lambda_values):
+        x_points = []
+        y_points = []
+        for result in results:
+            if result["lambda_rate"] == lambda_val:
+                x_points.append(result["utilization"])
+                y_points.append(result["avg_rider_time"])
+        
+        color = colors[i % len(colors)]
+        plt.plot(
+            x_points, y_points,
+            marker='o', 
+            linestyle='-', 
+            color=color,
+            label=f'λ = {lambda_val}'
+        )
+
+    plt.axvline(x = 1.0, color = 'red', linestyle = '--', alpha = 0.5)
+    plt.text(1.02, plt.ylim()[1] * 0.5, "Stability Threshold", color = 'red', rotation = 90)
+    
+    plt.title("Average Rider Wait Time vs System Utilization", fontsize=14)
+    plt.xlabel("System Utilization (λ/μ)", fontsize=12)
+    plt.ylabel("Average Rider Wait Time", fontsize=12)
+    plt.grid(True)
+    plt.legend()
+    plt.axvline(x = 1.0, color = 'red', linestyle = '--', alpha = 0.5, label = 'Stability Threshold')
+    plt.savefig("performance_comparison.png")
+    plt.close()
+    print("Plot saved as 'performance_comparison.png'")
+
+
 def main():
     """
     Run the ride-sharing simulation to find the best setup.
@@ -582,6 +707,7 @@ def main():
        - How many matches we made
        - How long riders waited (average and variance)
        - How often drivers found rides
+    4. Creates a plot showing queue length over time to analyze system stability
     """
     lambda_values = [3.0, 4.0, 5.0]
     mu_ratios = [0.8, 1.0, 1.2]
@@ -611,8 +737,8 @@ def main():
     print(f"Average rider wait time: {results['avg_rider_time']:.3f}")
     print(f"Variance in rider wait time: {results['variance_rider_time']:.3f}")
     print(f"Driver matching rate: {results['driver_matching_rate']:.3f}")
-    
-    print("\nSimulation complete!")
+    run_comparison_cases()
+    print("\nSimulation complete")
 
 
 if __name__ == "__main__":
