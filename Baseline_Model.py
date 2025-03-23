@@ -607,6 +607,7 @@ def run_comparison_cases():
     always greater than or equal to passenger arrival rate (λ). This ensures 
     queue stability, which in the steady-state.
     """
+    # pick values to see comparison cases
     lambda_values = [3.0, 4.0, 5.0, 6.0, 7.0]
     utilization_values = [0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
     results = []
@@ -615,7 +616,7 @@ def run_comparison_cases():
     print("Starting comparison...")
     for lambda_rate in lambda_values:
         for utilization in utilization_values:
-            # ensures μ >= λ
+            # ensures stability of the system so μ >= λ 
             mu_rate = lambda_rate / utilization
             
             print(f"Testing: λ={lambda_rate:.1f}, μ={mu_rate:.1f}, utilization={utilization:.2f}")
@@ -632,7 +633,7 @@ def run_comparison_cases():
                 "lambda_rate": lambda_rate,
                 "mu_rate": mu_rate,
                 "utilization": utilization,
-                "avg_rider_time": results_dict["avg_rider_time"]  # This is total time (wait + pickup + trip)
+                "avg_rider_time": results_dict["avg_rider_time"]  # This is total time which includes wait + pickup + trip
             })
             if utilization in [0.70, 0.85, 0.95]:
                 print(f"Creating queue length plot for utilization={utilization:.2f}...")
@@ -665,9 +666,8 @@ def plot_performance_comparison(results):
     colors = ['blue', 'orange', 'green', 'red', 'purple']
     
     for i, lambda_val in enumerate(lambda_values):
-        # Extract data points for this lambda value
-        x_points = []  # utilization values
-        y_points = []  # average total times
+        x_points = []  # this is utilization values
+        y_points = []  # this is average total times
         
         for result in results:
             if result["lambda_rate"] == lambda_val:
@@ -683,18 +683,15 @@ def plot_performance_comparison(results):
             label=f'λ = {lambda_val}'
         )
     
-    # Add vertical line at utilization = 1.0 (stability threshold)
     plt.axvline(x=1.0, color='red', linestyle='--', alpha=0.5)
     plt.text(1.02, plt.ylim()[1] * 0.5, "Stability Threshold", color='red', rotation=90)
     
-    # Add labels and legend
     plt.title("Average Total Time in System vs Utilization", fontsize=14)
     plt.xlabel("System Utilization (λ/μ)", fontsize=12)
     plt.ylabel("Average Total Time (wait + pickup + trip)", fontsize=12)
     plt.grid(True)
     plt.legend()
     
-    # Save and close
     plt.savefig("performance_comparison.png")
     plt.close()
     print("Plot saved as 'performance_comparison.png'")
@@ -714,6 +711,7 @@ def main():
        - How often drivers found rides
     4. Creates a plot showing queue length over time to analyze system stability
     """
+    # pick some values and ratios for ploting the visualization
     lambda_values = [3.0, 4.0, 5.0]
     mu_ratios = [0.8, 1.0, 1.2]
     
