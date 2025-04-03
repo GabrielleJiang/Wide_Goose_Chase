@@ -6,7 +6,9 @@ from collections import deque
 from Baseline_Model import(SimulationBaselineModel, 
                            Rider, 
                            RiderDeparture, 
-                           distance_of_polar_coordinates)
+                           distance_of_polar_coordinates,
+                           uniform_distributed_in_disk,
+                           RiderArrival)
 
 
 class SimulationZoningModel(SimulationBaselineModel):
@@ -150,6 +152,27 @@ class SimulationZoningModel(SimulationBaselineModel):
             self.zone_stats[origin_zone_id]["queue_times"].append(rider.queue_time)
             self.zone_stats[origin_zone_id]["pickup_wait_times"].append(rider.pickup_wait_time)
             self.zone_stats[origin_zone_id]["travel_times"].append(rider.travel_time)
+    
+
+    def _when_next_rider_arrival(self):
+        """
+        Generate the next rider arrival event which follow the Poisson distribution.
+        If lambda_rate is 0, no new rider arrival will be scheduled.
+        """
+        if self.lambda_rate <= 0:
+            return
+            
+        interval_rider_time = np.random.exponential(1 / self.lambda_rate)
+        event_time = self.current_time + interval_rider_time
+        rider_id = len(self.rider_arrival_times) + len(self.rider_times) + 1
+        
+        origin = uniform_distributed_in_disk(self.radius)
+        destination = uniform_distributed_in_disk(self.radius)
+        
+        period = int(event_time / self.period_length)
+        
+        event = RiderArrival(event_time, rider_id, origin, destination, period)
+        heapq.heappush(self.event_queue, event)
     
 
     def run(self):
@@ -324,7 +347,8 @@ class SimulationZoningModel(SimulationBaselineModel):
                     mu_rate=self.mu_rate,
                     n_zones=n_zones,
                     sim_duration=sim_duration,
-                    warmup_period=self.warmup_period
+                    warmup_period=self.warmup_period,
+                    radius=self.radius
                 )
                 
                 result = sim.run()
@@ -403,7 +427,8 @@ class SimulationZoningModel(SimulationBaselineModel):
                         mu_rate=base_mu_rate,
                         n_zones=n_zones,
                         sim_duration=sim_duration,
-                        warmup_period=self.warmup_period
+                        warmup_period=self.warmup_period,
+                        radius=self.radius
                     )
                     
                     result = sim.run()
@@ -442,7 +467,8 @@ if __name__ == "__main__":
         mu_rate=6.0, 
         n_zones=4,
         sim_duration=5000,
-        warmup_period=500
+        warmup_period=500,
+        radius=5.0
     )
     
     results = zoning_model.run()
@@ -476,7 +502,7 @@ if __name__ == "__main__":
     
     utilization_results = zoning_model.run_utilization_comparison(
         zone_numbers=[1, 2, 4, 6, 8, 10, 12],
-        utilization_rates=[0.1, 0.2, 0.3, 0.4, 0.5]
+        utilization_rates=[0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
     )
     
     plt.figure(figsize=(12, 5))
@@ -495,7 +521,7 @@ if __name__ == "__main__":
     plt.errorbar(zone_numbers, avg_times, yerr=std_times, fmt='o-', capsize=5)
     plt.xlabel('Number of Zones')
     plt.ylabel('Average Rider Time')
-    plt.title('Average Rider Time vs Number of Zones')
+    plt.title(f'Average Rider Time vs Number of Zones (Radius = {zoning_model.radius})')
     plt.grid(True)
     
     plt.subplot(1, 2, 2)
@@ -511,7 +537,7 @@ if __name__ == "__main__":
     plt.errorbar(zone_numbers, match_rates, yerr=std_rates, fmt='o-', capsize=5)
     plt.xlabel('Number of Zones')
     plt.ylabel('Driver Matching Rate')
-    plt.title('Driver Matching Rate vs Number of Zones')
+    plt.title(f'Driver Matching Rate vs Number of Zones (Radius = {zoning_model.radius})')
     plt.grid(True)
     
     plt.tight_layout()
@@ -538,7 +564,7 @@ if __name__ == "__main__":
     )
     plt.xlabel('Number of Zones')
     plt.ylabel('Average Travel Time (Pickup + Enroute)')
-    plt.title('Average Travel Time (Pickup + Enroute) vs Number of Zones')
+    plt.title(f'Average Travel Time vs Number of Zones (Radius = {zoning_model.radius})')
     plt.grid(True)
     
     plt.tight_layout()
@@ -565,7 +591,7 @@ if __name__ == "__main__":
     
     plt.xlabel('Utilization Rate')
     plt.ylabel('Average Rider Time')
-    plt.title('Average Rider Time vs Utilization Rate')
+    plt.title(f'Average Rider Time vs Utilization Rate (Radius = {zoning_model.radius})')
     plt.legend()
     plt.grid(True)
     
