@@ -7,7 +7,7 @@ This package simulates a ride-hailing system where:
 - Matching follows First-Come-First-Served (FCFS) policy
 """
 
-from .Baseline_Model import (
+from .Base_Line_Model.Baseline_Model import (
     SimulationBaselineModel,
     Event,
     RiderArrival,

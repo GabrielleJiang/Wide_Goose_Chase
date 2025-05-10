@@ -3,7 +3,7 @@ import numpy as np
 import heapq
 import matplotlib.pyplot as plt
 from collections import deque
-from Baseline_Model import(SimulationBaselineModel, 
+from Base_Line_Model.Baseline_Model import(SimulationBaselineModel, 
                            Rider, 
                            RiderDeparture, 
                            distance_of_polar_coordinates,
