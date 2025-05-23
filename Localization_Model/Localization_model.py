@@ -21,6 +21,8 @@ class SimulationLocalizationModel(SimulationBaselineModel):
     
     Attributes:
         l (float): Maximum allowed distance between driver and rider.
+        completed_riders (list): List to store all completed rider trips.
+        matched_rider_times (list): List to store times of successfully matched riders.
     """
     def __init__(self, lambda_rate, mu_rate, l=0.4, sim_duration=5000, warmup_period=500, period_length=100, radius=1):
         """
@@ -37,10 +39,23 @@ class SimulationLocalizationModel(SimulationBaselineModel):
         """
         super().__init__(lambda_rate, mu_rate, sim_duration, warmup_period, period_length, radius)
         self.l = l
+        self.completed_riders = []
+        self.matched_rider_times = []
         
+
+    def run(self):
+        """
+        Run the simulation and return performance metrics.
+        """
+        self.completed_riders = []
+        self.matched_rider_times = []
+        return super().run()
+
+
     def _when_driver_arrival(self, event):
         """
-        Use to handle driver arrival events with distance constraints.
+        Handle driver arrival events with distance constraints.
+        Only match drivers with riders within the maximum allowed distance.
         
         Parameters:
             event (DriverArrival): The driver arrival event.
@@ -82,40 +97,44 @@ class SimulationLocalizationModel(SimulationBaselineModel):
                 
                 if self.is_warmed_up:
                     self.matched_drivers += 1
+                    self.matched_rider_times.append(rider.total_time)
+
+
+    def _when_rider_departure(self, event):
+        """
+        Process rider departure events.
+        Add successfully matched riders to the completed_riders list.
+        
+        Parameters:
+            event (RiderDeparture): The rider departure event.
+        """
+        if self.is_warmed_up and hasattr(event.rider, 'matched_time'):
+            self.completed_riders.append(event.rider)
+        super()._when_rider_departure(event)
 
 
 def run_distance_comparison():
     """
-    Run simulations with different distance constraints and arrival rate ratios to compare their performance.
+    Run simulations with different distance constraints and arrival rate ratios.
     
     Returns:
         dict: Results for different parameter combinations.
     """
-
     sim_duration = 5000
     warmup_period = 500
     
-    distance_limits = [0.4, 0.6, 0.8, 1.0]
-    
-    scenarios = [
-        {"name": "Equal rates", "lambda": 5, "mu": 5},
-        {"name": "More drivers", "lambda": 5, "mu": 7},
-        {"name": "More riders", "lambda": 7, "mu": 5},
-        {"name": "Low volume", "lambda": 3, "mu": 3},
-        {"name": "High volume", "lambda": 10, "mu": 10}
-    ]
+    distance_limits = [0.2, 0.3, 0.4, 0.5]
+    mu_rate = 100
+    rho_values = [0.005, 0.01, 0.015, 0.02, 0.025]
     
     results = {}
     
-    for scenario in scenarios:
-        scenario_name = scenario["name"]
-        lambda_rate = scenario["lambda"]
-        mu_rate = scenario["mu"]
-        
-        print(f"\nScenario: {scenario_name} (λ={lambda_rate}, μ={mu_rate})")
+    for rho in rho_values:
+        lambda_rate = rho * mu_rate 
+        print(f"\nAnalyzing with λ = {lambda_rate:.1f}, μ = {mu_rate} (ρ = {rho:.3f})")
         print("=" * 50)
         
-        scenario_results = {}
+        rho_results = {}
         
         for l in distance_limits:
             print(f"Running simulation with distance limit l = {l}")
@@ -129,122 +148,121 @@ def run_distance_comparison():
             
             metrics = model.run()
             
-            scenario_results[l] = {
+            rho_results[l] = {
                 "avg_rider_time": metrics["avg_rider_time"],
                 "driver_matching_rate": metrics["driver_matching_rate"],
                 "total_riders": metrics["total_riders"],
                 "total_drivers": metrics["total_drivers"],
-                "matched_drivers": metrics["matched_drivers"],
-                "final_queue_length": len(model.rider_queue)
+                "matched_drivers": metrics["matched_drivers"]
             }
             
             print(f"Average rider time: {metrics['avg_rider_time']:.2f} seconds")
             print(f"Driver matching rate: {metrics['driver_matching_rate']:.2f}")
-            print(f"Final queue length: {len(model.rider_queue)}")
             print("-----------------------------------")
         
-        results[scenario_name] = scenario_results
-        
-        plot_distance_comparison(scenario_results, title=f"Results for {scenario_name} (λ={lambda_rate}, μ={mu_rate})")
+        results[rho] = rho_results
     
+    plot_combined_distance_comparison(results, mu_rate)
     plot_scenario_comparison(results)
     
     return results
 
 
-def plot_distance_comparison(results, title="Distance Limit Comparison"):
+def plot_combined_distance_comparison(results, mu_rate):
     """
-    Plot the comparison of different distance constraints.
+    Plot the comparison of different distance constraints with all rho values in the same plot.
     
     Parameters:
-        results (dict): Results from different simulations with varying distance constraints.
-        title (str): Title for the plot.
+        results (dict): Results from different simulations.
+        mu_rate (float): Fixed driver arrival rate.
     """
-    distance_limits = list(results.keys())
-    avg_rider_times = [results[l]["avg_rider_time"] for l in distance_limits]
-    driver_matching_rates = [results[l]["driver_matching_rate"] for l in distance_limits]
-    final_queue_lengths = [results[l]["final_queue_length"] for l in distance_limits]
+    distance_limits = sorted(list(list(results.values())[0].keys()))
+    rho_values = sorted(list(results.keys()))
     
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    ax1.plot(distance_limits, avg_rider_times, 'o-', color='blue')
+    colors = plt.cm.viridis(np.linspace(0, 1, len(rho_values)))
+    
+    for rho, color in zip(rho_values, colors):
+        lambda_rate = rho * mu_rate
+        avg_rider_times = [results[rho][l]["avg_rider_time"] for l in distance_limits]
+        driver_matching_rates = [results[rho][l]["driver_matching_rate"] for l in distance_limits]
+        
+        ax1.plot(distance_limits, avg_rider_times, 'o-', color=color, 
+                label=f'ρ = {rho:.3f} (λ = {lambda_rate:.1f})')
+        ax2.plot(distance_limits, driver_matching_rates, 'o-', color=color, 
+                label=f'ρ = {rho:.3f} (λ = {lambda_rate:.1f})')
+    
     ax1.set_xlabel('Distance Limit (l)')
     ax1.set_ylabel('Average Rider Time (seconds)')
     ax1.set_title('Average Rider Time vs Distance Limit')
     ax1.grid(True)
+    ax1.legend()
     
-    ax2.plot(distance_limits, driver_matching_rates, 'o-', color='green')
     ax2.set_xlabel('Distance Limit (l)')
     ax2.set_ylabel('Driver Matching Rate')
     ax2.set_title('Driver Matching Rate vs Distance Limit')
     ax2.grid(True)
+    ax2.legend()
     
-    ax3.plot(distance_limits, final_queue_lengths, 'o-', color='red')
-    ax3.set_xlabel('Distance Limit (l)')
-    ax3.set_ylabel('Final Queue Length')
-    ax3.set_title('Final Queue Length vs Distance Limit')
-    ax3.grid(True)
-    
-    plt.suptitle(title, fontsize=16)
+    plt.suptitle(f'System Performance Analysis (μ = {mu_rate})', fontsize=14)
     plt.tight_layout()
-    
-    filename = title.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("=", "").replace(",", "_") + ".png"
-    plt.savefig(filename)
+    plt.savefig('combined_distance_comparison.png')
     plt.show()
-
+    plt.close()
 
 def plot_scenario_comparison(results):
     """
-    Plot comparison across different scenarios.
+    Plot comparison across different rho values.
     
     Parameters:
-        results (dict): Results from different scenarios and distance limits.
+        results (dict): Results from different rho values and distance limits.
     """
-    scenarios = list(results.keys())
-    distance_limits = list(results[scenarios[0]].keys())
+    rho_values = sorted(list(results.keys()))
+    distance_limits = sorted(list(results[rho_values[0]].keys()))
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    for l in distance_limits:
-        avg_rider_times = [results[scenario][l]["avg_rider_time"] for scenario in scenarios]
-        driver_matching_rates = [results[scenario][l]["driver_matching_rate"] for scenario in scenarios]
-        
-        ax1.plot(scenarios, avg_rider_times, 'o-', label=f'l = {l}')
-        ax2.plot(scenarios, driver_matching_rates, 'o-', label=f'l = {l}')
+    colors = plt.cm.viridis(np.linspace(0, 1, len(distance_limits)))
     
-    ax1.set_xlabel('Scenario')
+    for l, color in zip(distance_limits, colors):
+        avg_rider_times = [results[rho][l]["avg_rider_time"] for rho in rho_values]
+        driver_matching_rates = [results[rho][l]["driver_matching_rate"] for rho in rho_values]
+        
+        ax1.plot(rho_values, avg_rider_times, 'o-', color=color, label=f'l = {l}')
+        ax2.plot(rho_values, driver_matching_rates, 'o-', color=color, label=f'l = {l}')
+    
+    ax1.set_xlabel('ρ (λ/μ)')
     ax1.set_ylabel('Average Rider Time (seconds)')
-    ax1.set_title('Average Rider Time Across Scenarios')
+    ax1.set_title('Average Rider Time vs ρ')
     ax1.grid(True)
     ax1.legend()
-    ax1.set_xticklabels(scenarios, rotation=45)
     
-    ax2.set_xlabel('Scenario')
+    ax2.set_xlabel('ρ (λ/μ)')
     ax2.set_ylabel('Driver Matching Rate')
-    ax2.set_title('Driver Matching Rate Across Scenarios')
+    ax2.set_title('Driver Matching Rate vs ρ')
     ax2.grid(True)
     ax2.legend()
-    ax2.set_xticklabels(scenarios, rotation=45)
     
-    plt.suptitle('Comparison Across Different Scenarios', fontsize=16)
+    plt.suptitle(f'System Performance Analysis (μ = 100)', fontsize=14)
     plt.tight_layout()
-    plt.savefig('scenario_comparison.png')
+    plt.savefig('rho_comparison.png')
     plt.show()
-
+    plt.close()
 
 if __name__ == "__main__":
     results = run_distance_comparison()
     
     print("\nSummary of Results:")
     print("-------------------")
-    for scenario, scenario_results in results.items():
-        print(f"\nScenario: {scenario}")
+    for rho, rho_results in results.items():
+        lambda_rate = rho * 100
+        print(f"\nρ = {rho:.3f} (λ = {lambda_rate:.1f}, μ = 100)")
         print("-" * 30)
-        for l, metrics in scenario_results.items():
+        for l, metrics in rho_results.items():
             print(f"Distance Limit (l) = {l}:")
             print(f"  Average Rider Time: {metrics['avg_rider_time']:.2f} seconds")
             print(f"  Driver Matching Rate: {metrics['driver_matching_rate']:.2f}")
             print(f"  Total Riders: {metrics['total_riders']}")
             print(f"  Matched Drivers: {metrics['matched_drivers']} out of {metrics['total_drivers']}")
-            print(f"  Final Queue Length: {metrics['final_queue_length']}")
             print()
